@@ -135,11 +135,11 @@ func (check *CheckConfig) Play(poller *PollerConfig, check_conf *CheckJSON) (map
 		return nil, err
 	} else if resp.StatusCode() != 200 {
 		return nil, fmt.Errorf("invalid result http code: %s", resp.Status())
-	} else if data != nil {
+	} /* else if data != nil {
 		// if cmd, ok := data[command].(map[string]any); ok {
 		// 	cmd["service"] = service
 		// }
 		// res, _ = json.MarshalIndent(data, "", "   ")
-	}
+	}*/
 	return data, err
 }

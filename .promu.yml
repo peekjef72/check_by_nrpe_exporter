@@ -1,0 +1,26 @@
+go:
+    cgo: false
+repository:
+    path: .
+build:
+    binaries:
+        - name: check_by_nrpe_exporter
+          prefix: ./check_by_nrpe_exporter
+    flags: -tags none
+    static: false
+    ldflags: |
+      -X github.com/prometheus/common/version.Version={{.Version}}
+      -X github.com/prometheus/common/version.Revision={{.Revision}}
+      -X github.com/prometheus/common/version.Branch={{.Branch}}
+      -X github.com/prometheus/common/version.BuildDate={{date "20060102-15:04:05"}}
+      -X github.com/prometheus/common/version.BuildUser={{user}}@{{host}}
+tarball:
+    prefix: .
+    files:
+        - LICENSE
+        - README.md
+        - conf/
+
+# crossbuild:
+#     platforms:
+#         - linux/amd64

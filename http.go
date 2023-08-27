@@ -19,10 +19,10 @@ const (
 )
 
 type CheckJSON struct {
-	Segment string            `json:"segment"`
-	Target  string            `json:"target"`
-	Type    string            `json:"type"`
-	Params  map[string]string `json:"params"`
+	Poller string            `json:"poller"`
+	Target string            `json:"target"`
+	Type   string            `json:"type"`
+	Params map[string]string `json:"params"`
 }
 
 // ExporterHandlerFor returns an http.Handler for the provided Exporter.
@@ -69,15 +69,15 @@ func ChecksHandlerFor(config *Config) http.Handler {
 			return
 		}
 
-		if check_conf.Segment == "" {
-			err := fmt.Errorf("segment parameter is missing")
+		if check_conf.Poller == "" {
+			err := fmt.Errorf("poller parameter is missing")
 			HandleError(http.StatusBadRequest, err, config, w, req)
 			return
 		}
 
-		poller, found := config.Pollers[check_conf.Segment]
+		poller, found := config.Pollers[check_conf.Poller]
 		if !found {
-			err := fmt.Errorf("poller for segment '%s' not found", check_conf.Segment)
+			err := fmt.Errorf("poller name '%s' not found", check_conf.Poller)
 			HandleError(http.StatusNotFound, err, config, w, req)
 			return
 		}

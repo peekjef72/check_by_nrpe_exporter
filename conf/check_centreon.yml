@@ -1,0 +1,107 @@
+# Global defaults.
+global:
+  scrape_timeout: 10s
+  max_content_length: 16384
+
+pollers:
+  C2:
+    host: c2lsupproxy01.c2.dav.fr
+  C2LegacyTEST:
+    host: dal-v-survdadc.dassault-avion.val
+  C2LegacyTEST2:
+    host: dal-i-tech02.dassault-avion.inf
+    port: 9276
+
+checks:
+  custom:
+    command: check_threshold
+    command_line: "-s {{ .custom_check }} -m {{ .parameters }} -b"
+    params:
+      - name: custom_check
+        mandatory: true
+      - name: parameters
+        default: ""
+        encode: base64
+
+  filesystem:
+    command: check_disk
+        # -X binfmt_misc -X devpts -X devtmpfs -X none -X proc -X procfs -X rpc_pipefs -X sysfs -X tmpfs -X overlay -X debugfs -X tracefs -X autofs -X cgroup --errors-only $_SERVICEA_OPTPARAMS$ -t $_SERVICEA_TIMEOUT_CMD$ -w $_SERVICEWARNING$% -c $_SERVICECRITICAL$% --all --local -i /.snapshot/
+        # -X none -X proc -X procfs -X tmpfs -X autofs -X ahafs --errors-only $_SERVICEA_OPTPARAMS$ -t $_SERVICEA_TIMEOUT_CMD$ -w $_SERVICEWARNING$% -c $_SERVICECRITICAL$% --all --local -i /.snapshot/'
+    command_line: "
+      -X binfmt_misc -X devpts -X devtmpfs -X none -X proc -X procfs -X rpc_pipefs 
+      -X sysfs -X tmpfs -X overlay -X debugfs -X tracefs -X autofs -X cgroup 
+      --errors-only {{ .options }} -t {{ .timeout }} -w {{ .perc_threshold_warn }} -c {{ .perc_threshold_crit }} --all --local -i /.snapshot/"
+    params:
+      - name: options
+        default: ""
+      - name: perc_threshold_warn
+        default: 95
+      - name: perc_threshold_crit
+        default: 97
+      - name: timeout
+        default: 5
+
+  filesystemre:
+    command: check_disk
+    command_line: "--errors-only {{ .options }} -t {{ .timeout }} -w {{ .perc_threshold_warn }} -c {{ .perc_threshold_crit }} --ereg-path={{ .ereg_path }}"
+    params:
+      - name: ereg_path
+        mandatory: true
+      - name: options
+        default: ""
+      - name: perc_threshold_warn
+        mandatory: true
+      - name: perc_threshold_crit
+        mandatory: true
+      - name: timeout
+        default: 5
+
+  log:
+    command: check_log
+    command_line: "-l {{ .logfilepath }} --allow_missing -o _ -k {{ .ko_pattern }} -b"
+    params:
+      - name: logfilepath
+        mandatory: true
+      - name: ko_pattern
+        mandatory: true
+        encode: base64
+
+  process:
+    command: check_procs
+    command_line: "-c {{ .min_count }}:{{ .max_count }} --ereg-argument-array=\"{{ .process }}\""
+    params:
+      - name: process
+        mandatory: true
+      - name: min_count
+        mandatory: false
+        default: 1
+      - name: max_count
+        mandatory: false
+        default: ""
+
+  service:
+    command: check_service
+    command_line: "-s {{ .service }}"
+    params:
+      - name: service
+        mandatory: true
+
+  url:
+    command: check_http
+    command_line: "-H {{ .hostname }} -p {{ .port }} -u {{ .url }} {{ .options }} --ereg=\"{{ .reg_match }}\""
+    params:
+      - name: hostname
+        mandatory: true
+      - name: port
+        default: 80
+      - name: url
+        default: /
+      - name: options
+        mandatory: false
+        default: ""
+      - name: reg_match
+        mandatory: false
+        default: ".*"
+
+  version:
+    command: _NRPE_CHECK

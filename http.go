@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-kit/log/level"
+	"golang.org/x/exp/maps"
 )
 
 const (
@@ -25,127 +27,288 @@ type CheckJSON struct {
 	Params map[string]string `json:"params"`
 }
 
-// ExporterHandlerFor returns an http.Handler for the provided Exporter.
-func ChecksHandlerFor(config *Config) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		// ctx, cancel := contextFor(req, config)
-		// defer cancel()
+// CheckHandlerFor returns an http.Handler for the provided POST to /check.
+//
+// awaiting data in JSON format:
+// { "poller": "poller host", "type": "type of check", "params": {"param1": "value1", ...}}
+func TriesHandler(w http.ResponseWriter, req *http.Request) {
+	var (
+		poller_name, check_name string
+	)
+	ctxval, ok := req.Context().Value(ctxKey{}).(*ctxValue)
+	if !ok {
+		err := fmt.Errorf("invalid context received")
+		HandleError(http.StatusInternalServerError, err, nil, w, req)
+		return
 
-		// params := req.URL.Query()
-		contentLength := 0
-		if header := req.Header.Get(contentLengthHeader); header != "" {
-			length, err := strconv.Atoi(header)
-			if err != nil {
-				HandleError(http.StatusBadRequest, err, config, w, req)
-				return
-			}
-			contentLength = length
+	}
+	config := ctxval.config
+
+	if req.Method != http.MethodPost {
+		err := fmt.Errorf("invalid method: only POST allowed")
+		HandleError(http.StatusMethodNotAllowed, err, config, w, req)
+		return
+	}
+	if ctxval.path != "" {
+		path_elmts := strings.Split(ctxval.path, "/")
+		if len(path_elmts) > 0 {
+			poller_name = path_elmts[0]
 		}
-		if contentLength <= 0 {
-			err := fmt.Errorf("invalid content-length detect")
-			HandleError(http.StatusBadRequest, err, config, w, req)
-			return
-
+		if len(path_elmts) > 1 {
+			check_name = path_elmts[1]
 		}
-		if contentLength >= config.Globals.MaxContentLength {
-			err := fmt.Errorf("invalid content-length detect > %d", config.Globals.MaxContentLength)
-			HandleError(http.StatusBadRequest, err, config, w, req)
-			return
-
-		}
-
-		body := make([]byte, contentLength)
-		defer req.Body.Close()
-		_, err := req.Body.Read(body)
-		if err != nil && err != io.EOF {
-			HandleError(http.StatusBadRequest, err, config, w, req)
-			return
-		}
-		var check_conf CheckJSON
-
-		err = json.Unmarshal(body, &check_conf)
+	}
+	// params := req.URL.Query()
+	contentLength := 0
+	if header := req.Header.Get(contentLengthHeader); header != "" {
+		length, err := strconv.Atoi(header)
 		if err != nil {
 			HandleError(http.StatusBadRequest, err, config, w, req)
 			return
 		}
+		contentLength = length
+	}
+	if contentLength <= 0 {
+		err := fmt.Errorf("invalid content-length detect")
+		HandleError(http.StatusBadRequest, err, config, w, req)
+		return
+	}
+	if contentLength >= config.Globals.MaxContentLength {
+		err := fmt.Errorf("invalid content-length detect > %d", config.Globals.MaxContentLength)
+		HandleError(http.StatusBadRequest, err, config, w, req)
+		return
 
-		if check_conf.Poller == "" {
+	}
+
+	body := make([]byte, contentLength)
+	defer req.Body.Close()
+	_, err := req.Body.Read(body)
+	if err != nil && err != io.EOF {
+		HandleError(http.StatusBadRequest, err, config, w, req)
+		return
+	}
+	var check_conf CheckJSON
+
+	err = json.Unmarshal(body, &check_conf)
+	if err != nil {
+		HandleError(http.StatusBadRequest, err, config, w, req)
+		return
+	}
+
+	if check_conf.Poller == "" {
+		if poller_name != "" {
+			check_conf.Poller = poller_name
+		} else {
 			err := fmt.Errorf("poller parameter is missing")
 			HandleError(http.StatusBadRequest, err, config, w, req)
 			return
 		}
+	}
 
-		poller, found := config.Pollers[check_conf.Poller]
-		if !found {
-			err := fmt.Errorf("poller name '%s' not found", check_conf.Poller)
+	poller, found := config.Pollers[check_conf.Poller]
+	if !found {
+		err := fmt.Errorf("poller name '%s' not found", check_conf.Poller)
+		HandleError(http.StatusNotFound, err, config, w, req)
+		return
+	}
+	if check_conf.Type == "" {
+		if check_name != "" {
+			check_conf.Type = check_name
+		} else {
+			err := fmt.Errorf("check type parameter is missing")
+			HandleError(http.StatusBadRequest, err, config, w, req)
+			return
+
+		}
+	}
+	check := config.FindCheck(check_conf.Type)
+	if check == nil {
+		err := fmt.Errorf("check type '%s' not found", check_conf.Type)
+		HandleError(http.StatusNotFound, err, config, w, req)
+		return
+	}
+	data, err := check.Play(poller, &check_conf)
+	if err != nil {
+		HandleError(http.StatusBadRequest, err, config, w, req)
+		return
+	}
+	// // Go through prometheus.Gatherers to sanitize and sort metrics.
+	// gatherer := prometheus.Gatherers{exporter.WithContext(ctx, t)}
+	// mfs, err := gatherer.Gather()
+	// if err != nil {
+	// 	level.Error(config.logger).Log("msg", fmt.Sprintf("Error gathering metrics for '%s': %s", tname, err))
+	// 	if len(mfs) == 0 {
+	// 		http.Error(w, "No metrics gathered, "+err.Error(), http.StatusInternalServerError)
+	// 		return
+	// 	}
+	// }
+
+	/*
+		contentType := expfmt.Negotiate(req.Header)
+		buf := getBuf()
+		defer giveBuf(buf)
+		writer, encoding := decorateWriter(req, buf)
+		enc := expfmt.NewEncoder(writer, contentType)
+		var errs prometheus.MultiError
+		for _, mf := range mfs {
+			if err := enc.Encode(mf); err != nil {
+				errs = append(errs, err)
+				level.Info(config.logger).Log("msg", fmt.Sprintf("Error encoding metric family %q: %s", mf.GetName(), err))
+			}
+		}
+		if closer, ok := writer.(io.Closer); ok {
+			closer.Close()
+		}
+		if errs.MaybeUnwrap() != nil && buf.Len() == 0 {
+			err = fmt.Errorf("no result encoded: %s, ", errs.Error())
+			HandleError(http.StatusInternalServerError, err, config, w, req)
+			return
+		}
+	*/
+	if data == nil {
+		data = make(map[string]any)
+	}
+	data["status"] = 1
+	data["message"] = "ok"
+
+	res, err := json.Marshal(data)
+	if err != nil {
+		HandleError(http.StatusBadRequest, err, config, w, req)
+		return
+	}
+
+	header := w.Header()
+	header.Set(contentTypeHeader, string(applicationJSON))
+	header.Set(contentLengthHeader, fmt.Sprint(len(res)))
+	// header.Set(contentLengthHeader, fmt.Sprint(buf.Len()))
+	// if encoding != "" {
+	// 	header.Set(contentEncodingHeader, encoding)
+	// }
+	w.Write(res)
+}
+
+func PollersHandler(w http.ResponseWriter, req *http.Request) {
+	// ctx, cancel := contextFor(req, config)
+	// defer cancel()
+	ctxval, ok := req.Context().Value(ctxKey{}).(*ctxValue)
+	if !ok {
+		err := fmt.Errorf("invalid context received")
+		HandleError(http.StatusInternalServerError, err, nil, w, req)
+		return
+
+	}
+	config := ctxval.config
+	if req.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		err := fmt.Errorf("invalid method: only GET allowed")
+		HandleError(http.StatusMethodNotAllowed, err, config, w, req)
+		return
+	}
+
+	data := make(map[string]any)
+	data["status"] = 1
+	data["message"] = "ok"
+
+	if ctxval.path != "" {
+		var (
+			poller *PollerConfig
+			ok     bool = false
+		)
+		path_elmts := strings.Split(ctxval.path, "/")
+		if len(path_elmts) > 0 {
+			poller_name := path_elmts[0]
+			poller, ok = config.Pollers[poller_name]
+			if poller != nil {
+				subdata := make(map[string]any)
+				subdata[poller_name] = poller
+				data["poller"] = subdata
+			}
+		}
+		if !ok {
+			err := fmt.Errorf("poller not found")
 			HandleError(http.StatusNotFound, err, config, w, req)
 			return
 		}
-		check := config.FindCheck(check_conf.Type)
-		if check == nil {
-			err := fmt.Errorf("check type '%s' not found", check_conf.Type)
+	} else {
+		data["pollers"] = maps.Keys(config.Pollers)
+	}
+
+	res, err := json.Marshal(data)
+	if err != nil {
+		HandleError(http.StatusBadRequest, err, config, w, req)
+		return
+	}
+
+	header := w.Header()
+	header.Set(contentTypeHeader, string(applicationJSON))
+	header.Set(contentLengthHeader, fmt.Sprint(len(res)))
+	// header.Set(contentLengthHeader, fmt.Sprint(buf.Len()))
+	// if encoding != "" {
+	// 	header.Set(contentEncodingHeader, encoding)
+	// }
+	w.Write(res)
+}
+
+func ChecksHandler(w http.ResponseWriter, req *http.Request) {
+	// ctx, cancel := contextFor(req, config)
+	// defer cancel()
+	ctxval, ok := req.Context().Value(ctxKey{}).(*ctxValue)
+	if !ok {
+		err := fmt.Errorf("invalid context received")
+		HandleError(http.StatusInternalServerError, err, nil, w, req)
+		return
+
+	}
+	config := ctxval.config
+	if req.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		err := fmt.Errorf("invalid method: only GET allowed")
+		HandleError(http.StatusMethodNotAllowed, err, config, w, req)
+		return
+	}
+
+	data := make(map[string]any)
+	data["status"] = 1
+	data["message"] = "ok"
+
+	if ctxval.path != "" {
+		var (
+			check *CheckConfig
+			ok    bool = false
+		)
+		path_elmts := strings.Split(ctxval.path, "/")
+		if len(path_elmts) > 0 {
+			check, ok = config.Checks[ctxval.path]
+			if check != nil {
+				subdata := make(map[string]any)
+				subdata[ctxval.path] = check
+				data["check"] = subdata
+			}
+		}
+		if !ok {
+			err := fmt.Errorf("check not found")
 			HandleError(http.StatusNotFound, err, config, w, req)
 			return
 		}
-		data, err := check.Play(poller, &check_conf)
-		if err != nil {
-			HandleError(http.StatusBadRequest, err, config, w, req)
-			return
-		}
-		// // Go through prometheus.Gatherers to sanitize and sort metrics.
-		// gatherer := prometheus.Gatherers{exporter.WithContext(ctx, t)}
-		// mfs, err := gatherer.Gather()
-		// if err != nil {
-		// 	level.Error(config.logger).Log("msg", fmt.Sprintf("Error gathering metrics for '%s': %s", tname, err))
-		// 	if len(mfs) == 0 {
-		// 		http.Error(w, "No metrics gathered, "+err.Error(), http.StatusInternalServerError)
-		// 		return
-		// 	}
-		// }
 
-		/*
-			contentType := expfmt.Negotiate(req.Header)
-			buf := getBuf()
-			defer giveBuf(buf)
-			writer, encoding := decorateWriter(req, buf)
-			enc := expfmt.NewEncoder(writer, contentType)
-			var errs prometheus.MultiError
-			for _, mf := range mfs {
-				if err := enc.Encode(mf); err != nil {
-					errs = append(errs, err)
-					level.Info(config.logger).Log("msg", fmt.Sprintf("Error encoding metric family %q: %s", mf.GetName(), err))
-				}
-			}
-			if closer, ok := writer.(io.Closer); ok {
-				closer.Close()
-			}
-			if errs.MaybeUnwrap() != nil && buf.Len() == 0 {
-				err = fmt.Errorf("no result encoded: %s, ", errs.Error())
-				HandleError(http.StatusInternalServerError, err, config, w, req)
-				return
-			}
-		*/
-		if data == nil {
-			data = make(map[string]any)
-		}
-		data["status"] = 1
-		data["message"] = "ok"
+	} else {
+		data["checks"] = maps.Keys(config.Checks)
+	}
 
-		res, err := json.Marshal(data)
-		if err != nil {
-			HandleError(http.StatusBadRequest, err, config, w, req)
-			return
-		}
+	res, err := json.Marshal(data)
+	if err != nil {
+		HandleError(http.StatusBadRequest, err, config, w, req)
+		return
+	}
 
-		header := w.Header()
-		header.Set(contentTypeHeader, string(applicationJSON))
-		header.Set(contentLengthHeader, fmt.Sprint(len(res)))
-		// header.Set(contentLengthHeader, fmt.Sprint(buf.Len()))
-		// if encoding != "" {
-		// 	header.Set(contentEncodingHeader, encoding)
-		// }
-		w.Write(res)
-	})
+	header := w.Header()
+	header.Set(contentTypeHeader, string(applicationJSON))
+	header.Set(contentLengthHeader, fmt.Sprint(len(res)))
+	// header.Set(contentLengthHeader, fmt.Sprint(buf.Len()))
+	// if encoding != "" {
+	// 	header.Set(contentEncodingHeader, encoding)
+	// }
+	w.Write(res)
 }
 
 /*
@@ -216,7 +379,7 @@ func HandleError(status int, err error, config *Config, w http.ResponseWriter, r
 	errMsg["status"] = 0
 	errMsg["message"] = fmt.Sprintf("%s", err)
 	err_msg, err := json.Marshal(errMsg)
-	if err != nil {
+	if err != nil && config != nil {
 		level.Error(config.logger).Log("msg", fmt.Sprintf("Failed to generate error msg: %s", err))
 		return
 	}

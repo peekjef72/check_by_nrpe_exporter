@@ -6,8 +6,8 @@ build:
     binaries:
         - name: check_by_nrpe_exporter
           prefix: ./check_by_nrpe_exporter
-    flags: -tags none
-    static: false
+    flags: -tags netgo,usergo
+    static: true
     ldflags: |
       -X github.com/prometheus/common/version.Version={{.Version}}
       -X github.com/prometheus/common/version.Revision={{.Revision}}

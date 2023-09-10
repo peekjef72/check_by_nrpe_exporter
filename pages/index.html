@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Check NRPE command by nrpe_exporter</title>
+  <link rel="stylesheet" href="/html/css/bootstrap.min.css">
+</head>
+<body>
+
+<div class="container">
+  <h1>Check Centreon</h1>
+    <form class="needs-validation" id="send_check">
+    <div class="form-group row col-md-6">
+      <label for="select-poller" class="col-sm-2 col-form-label">Poller</label>
+      <div class="col-sm-10">
+        <select id="select-poller" class="form-control">
+          <option value="">select poller</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group row col-md-6">
+      <label for="target" class="col-sm-2 col-form-label">Target</label>
+      <div class="col-sm-10">
+        <input type="text" id="target" class="form-control form-control-sm" placeholder="target" required>
+        <div class="invalid-feedback">
+           Please set a target host
+        </div>
+      </div>
+    </div>
+    <div class="form-group row col-md-6">
+      <label for="select-check" class="col-sm-2 col-form-label">Check</label>
+      <div class="col-sm-10">
+        <select id="select-check" class="form-control form-control-sm">
+          <option value="">select check type</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group row g-2 col-md-10" id="params">
+    </div>
+    <div class="form-group row" >
+      <button class="btn btn-primary" type="submit" id="submit-button">Perform Check</button>
+    </div>
+    </form>
+
+  <div id="response"></div>
+
+</div>
+
+<script src="/html/javascript/jquery.min.js"></script>
+<script>
+
+  var pollers = [],
+      checks = [],
+      current_poller = 'C2LegacyTEST',
+      current_check = 'version',
+      api_url = '/api'
+
+  $(document).ready(function() {
+
+    // init pollers list
+    $.ajax({
+      type: "GET",
+      crossDomain: true,
+      url: api_url + "/poller",
+      success: function(data) {
+        if (data.status == 1 ) {
+          pollers = data.pollers
+          var options = [], selected;
+          for (var i in pollers) {
+            selected = ''
+            if (pollers[i] == current_poller) {
+              selected = ' selected'
+            }
+            options.push('<option value="poller_' + pollers[i] + '"' + selected + '>' + pollers[i] + '</options>')
+          }
+
+          // update pollers list
+          $("#select-poller").html(options);
+        }
+        $("#response").html(JSON.stringify(data));
+      },
+      error: function(error) {
+        $("#response").html(JSON.stringify(error));
+      }
+    });
+
+    // init check list
+    $.ajax({
+      type: "GET",
+      crossDomain: true,
+      url: api_url + "/check",
+      success: function(data) {
+        if (data.status == 1 ) {
+          checks = {}
+          var options = [], selected;
+          for (var i in data.checks) {
+            selected = ''
+            if (data.checks[i] == current_check) {
+              selected = ' selected'
+            }
+            options.push('<option value="check_' + data.checks[i] + '"' + selected + '>' + data.checks[i] + '</options>')
+            checks[checks[i]] = undefined
+          }
+
+          // update new check parameters list
+          $("#select-check").html(options);
+          $("#select-check").change();
+        } else {
+          $("#response").html('<div id="myalert" class="alert alert-warning alert-dismissible fade show" role="alert">'
+            + '<strong>Error</strong>' + data.message
+            + '<button type="button" class="close" data-dismiss="alert" aria-label="Close">'
+            + '<span aria-hidden="true">&times;</span>'
+            + ' </button>'
+            + '</div>');
+        }
+      },
+      error: function(error) {
+        $("#response").html(JSON.stringify(error));
+      }
+    });
+
+    function launchCheck(url) {
+      var form = document.getElementById("send_check")
+      if(form == undefined) return false
+      if( !form.checkValidity() ) {
+        return false
+      }
+
+      var data = {}, sel, params, val
+      data.poller = $("#select-poller option:selected").text()
+      data.target = $("#target").val()
+      // append port 5666 to target if not specified
+      if ( data.target.indexOf(":") == -1 ) {
+        data.target += ':5666'
+        $("#target").val(data.target)
+      }
+      sel = $("#select-check option:selected").text()
+      data.type = sel
+      params = checks[sel]['CommandParams']
+      if( params != undefined) {
+        data['params'] = {} 
+        for(var i=0; i<params.length; i++) {
+          val = $("#" + params[i].Name + '_id').val()
+          if (val != "" ) {
+            data['params'][params[i].Name] = val
+          }
+        }
+      }
+
+      $("#response").html(JSON.stringify(data));
+
+      $.ajax({
+        type: "POST",
+        url: url,
+        crossDomain: true,
+        data: JSON.stringify(data),
+        contentType: "application/json; charset=utf-8",
+        success: function(data) {
+          displayResult(data)
+//          $("#response").html(JSON.stringify(data));
+        },
+        error: function(error) {
+          $("#response").html(error);
+        }
+      });
+    }
+
+    $("#submit-button").click(function() {
+      launchCheck( api_url + "/trycheck");
+    });
+
+    var form = document.getElementById("send_check")
+    if(form != undefined) {
+      form.addEventListener('submit', function (event) {
+          event.preventDefault()
+          event.stopPropagation()
+
+      //    form.classList.add('was-validated')
+      }, false)
+    }
+
+    $('#myalert').on('closed.bs.alert', function () {
+      $("#response").html('')
+    });
+
+    $("#select-check").change(function() {
+      var sel, check
+      sel = $("#select-check option:selected").text()
+      if ( checks[sel] == undefined ) {
+        $.ajax({
+          type: "GET",
+          crossDomain: true,
+          url: api_url + "/check/" + sel,
+          success: function(data) {
+            if (data.status == 1 ) {
+              check = data["check"][sel]
+              var options = [];
+              checks[sel] = check
+              if (!check.CommandParams instanceof Array) {
+                checks[sel]['CommandParams'] = []
+              }
+              displayCheck(checks[sel]['CommandParams'])
+            } else {
+              $("#response").html('<div id="myalert" class="alert alert-warning alert-dismissible fade show" role="alert">'
+                + '<strong>Error</strong><p>' + data.message + '</p>'
+                + '<button type="button" class="close" data-dismiss="alert" aria-label="Close">'
+                + '<span aria-hidden="true">&times;</span>'
+                + ' </button>'
+                + '</div>');
+            }
+          },
+          error: function(error) {
+            $("#response").html(JSON.stringify(error));
+          }
+        });
+      } else {
+        displayCheck(checks[sel]['CommandParams'])
+      }
+    });
+
+    function displayCheck(check_params) {
+      var l, tx, d, dm, dr
+
+      $('#params').html('')
+      for(var i=0; i<check_params.length; i++) {
+        l = document.createElement('label');
+        l.htmlFor = check_params[i].Name
+        $(l).addClass('col-form-label col-sm-2')
+            .html(check_params[i].Name)
+
+        tx = document.createElement('input');
+        tx.type='text'
+        tx.placeHolder = check_params[i].Name
+        tx.id = check_params[i].Name + '_id'
+        if( check_params[i].Mandatory != undefined && check_params[i].Mandatory )
+        {
+          tx.required = true
+        }
+        if (check_params[i].Default != undefined && check_params[i].Default != "<not set>" ) {
+          tx.value = check_params[i].Default
+        }
+        $(tx).addClass("form-control")
+        d = document.createElement('div');
+        $(d).addClass("col-sm-6")
+        d.appendChild(tx)
+
+        if( check_params[i].Mandatory != undefined && check_params[i].Mandatory )
+        {
+          dm = document.createElement('div');
+          $(dm).addClass("invalid-feedback")
+                .text('Please provide a value')
+          d.appendChild(dm)
+        }
+
+        dr = document.createElement('div');
+        $(dr).addClass("form-group row g-2 col-md-10")
+        dr.appendChild(l)
+        dr.appendChild(d)
+
+        $('#params').append(dr)
+
+      }
+    }
+
+    function displayResult(results) {
+      var sel = $("#select-check option:selected").text(),
+        nrpe_up,
+        duration,
+        check = checks[sel],
+        nrpe_command_exe,
+        nrpe_command_status,
+        nrpe_message,
+        res,
+        now = new Date(),
+        now_date
+
+        // nrpe_up: 0 | 1
+      nrpe_up = '<td>NRPE agent</td>' 
+      if (results.nrpe_up == 0) {
+        nrpe_up += '<td class="table-danger">UNREACHABLE</td>'
+      } else {
+        nrpe_up += '<td class="table-success">OK</td>'
+      }
+
+      var mon = now.getMonth(),
+          day = now.getDate()
+      if (mon < 10) {
+        mon = '0' + mon
+      }
+      if (day < 10) {
+        day = '0' + day
+      }
+
+      now_date = now.getFullYear() + '-' + mon + '-' + day
+        + ' ' + now.toTimeString()
+      res = '<table class="table table-striped table-hover">' +
+              '<tbody>' +
+                '<tr scope="row"><td>Target</td><td>' + $("#target").val() + '</td></tr>' +
+                '<tr scope="row"><td>Check date</td><td>' + now_date + '</td></tr>' +
+                nrpe_up +
+                '</tr>'
+
+                '<tr scope="row">'+
+                nrpe_up +
+                '</tr>'
+
+      // scrap duration
+      if(results.nrpe_scrap_duration != undefined) {
+        duration =  '<td>Total Duration (s)</td><td>' + results.nrpe_scrap_duration + '</td>'
+        res += '<tr scope="row">' + duration + '</tr>'
+      }
+
+      // command result
+      if (results[check.Command] != undefined ) {
+        var cmd_res = results[check.Command]
+
+        // did command execute or not
+        nrpe_command_exe = '<td>NRPE command execution</td>'
+        if( cmd_res.nrpe_command_ok == 1 ) {
+          nrpe_command_exe += '<td class="table-success">OK</td>'
+        } else {
+          nrpe_command_exe += '<td class="table-danger">ERROR</td>'
+        }
+        res += '<tr scope="row">' + nrpe_command_exe + '</tr>'
+
+        nrpe_command_status = '<td>NRPE command status</td>'
+        switch( cmd_res.nrpe_command_status ) {
+          case 'OK':
+            nrpe_command_status += '<td class="table-success">'
+            break;
+          case 'WARNING':
+            nrpe_command_status += '<td class="table-warning">'
+            break;
+          case 'CRITICAL':
+            nrpe_command_status += '<td class="table-danger">'
+            break;
+          default:
+            nrpe_command_status += '<td class="table-secondary">'
+            break;
+        }
+        nrpe_command_status += cmd_res.nrpe_command_status + '</td>'
+        res += '<tr scope="row">' + nrpe_command_status + '</tr>'
+
+        if( cmd_res.result_msg != undefined) {
+          var pos, msg, perf
+          if( (pos = cmd_res.result_msg.indexOf("|")) != -1) {
+              msg = cmd_res.result_msg.substring(0, pos)
+              perf = cmd_res.result_msg.substring(pos+2)
+          } else {
+            msg = cmd_res.result_msg
+          }
+
+          // command execution message
+          nrpe_message =  '<td>NRPE command Message</td><td>' + msg + '</td>'
+          res += '<tr scope="row">' + nrpe_message + '</tr>'
+          // command execution result performance
+          if( perf != undefined) {
+            perf = perf.replaceAll(' ', '<br>')
+            nrpe_message =  '<td>NRPE command Performance</td><td>' + perf + '</td>'
+            res += '<tr scope="row">' + nrpe_message + '</tr>'
+          }
+        }
+        if( cmd_res.nrpe_command_duration != undefined) {
+          res +=  '<tr scope="row"><td>NRPE command Duration (s)</td><td>' + cmd_res.nrpe_command_duration + '</td></tr>'
+        }
+      }
+      res += '</tbody>' +
+            '</table>'
+      $("#response").html( res );
+    }
+
+  });
+</script>
+
+</body>
+</html>
+

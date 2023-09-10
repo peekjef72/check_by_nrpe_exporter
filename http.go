@@ -17,6 +17,7 @@ const (
 	contentLengthHeader   = "Content-Length"
 	contentEncodingHeader = "Content-Encoding"
 	acceptEncodingHeader  = "Accept-Encoding"
+	allowOriginHeader     = "Access-Control-Allow-Origin"
 	applicationJSON       = "application/json"
 )
 
@@ -44,7 +45,12 @@ func TriesHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	config := ctxval.config
 
-	if req.Method != http.MethodPost {
+	if req.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTION")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
+		w.Header().Set(allowOriginHeader, "*")
+		return
+	} else if req.Method != http.MethodPost {
 		err := fmt.Errorf("invalid method: only POST allowed")
 		HandleError(http.StatusMethodNotAllowed, err, config, w, req)
 		return
@@ -180,6 +186,7 @@ func TriesHandler(w http.ResponseWriter, req *http.Request) {
 	header := w.Header()
 	header.Set(contentTypeHeader, string(applicationJSON))
 	header.Set(contentLengthHeader, fmt.Sprint(len(res)))
+	header.Set(allowOriginHeader, "*")
 	// header.Set(contentLengthHeader, fmt.Sprint(buf.Len()))
 	// if encoding != "" {
 	// 	header.Set(contentEncodingHeader, encoding)
@@ -242,6 +249,7 @@ func PollersHandler(w http.ResponseWriter, req *http.Request) {
 	header := w.Header()
 	header.Set(contentTypeHeader, string(applicationJSON))
 	header.Set(contentLengthHeader, fmt.Sprint(len(res)))
+	header.Set(allowOriginHeader, "*")
 	// header.Set(contentLengthHeader, fmt.Sprint(buf.Len()))
 	// if encoding != "" {
 	// 	header.Set(contentEncodingHeader, encoding)
@@ -304,6 +312,7 @@ func ChecksHandler(w http.ResponseWriter, req *http.Request) {
 	header := w.Header()
 	header.Set(contentTypeHeader, string(applicationJSON))
 	header.Set(contentLengthHeader, fmt.Sprint(len(res)))
+	header.Set(allowOriginHeader, "*")
 	// header.Set(contentLengthHeader, fmt.Sprint(buf.Len()))
 	// if encoding != "" {
 	// 	header.Set(contentEncodingHeader, encoding)
@@ -374,6 +383,7 @@ func HandleError(status int, err error, config *Config, w http.ResponseWriter, r
 	}
 	w.WriteHeader(status)
 	w.Header().Set(contentTypeHeader, string(applicationJSON))
+	w.Header().Set(allowOriginHeader, "*")
 
 	errMsg := make(map[string]any)
 	errMsg["status"] = 0

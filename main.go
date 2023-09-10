@@ -10,16 +10,16 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-
-	// "strings"
+	"strings"
 
 	"github.com/go-kit/log/level"
-	// "github.com/go-resty/resty/v2"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
 
 	kingpin "github.com/alecthomas/kingpin/v2"
+	"github.com/prometheus/exporter-toolkit/web"
+	"github.com/prometheus/exporter-toolkit/web/kingpinflag"
 )
 
 // **************
@@ -31,8 +31,9 @@ const (
 var (
 
 	// debug_flag = kingpin.Flag("debug", "debug connection checks.").Short('d').Default("false").Bool()
-	listenAddress = kingpin.Flag("web.listen-address", "The address to listen on for HTTP requests.").Default(metricsPublishingPort).String()
-	configFile    = kingpin.Flag("config.file", "Exporter configuration file.").Short('c').Default("conf/check_by_nrpe_exporter.yml").String()
+	// listenAddress = kingpin.Flag("web.listen-address", "The address to listen on for HTTP requests.").Default(metricsPublishingPort).String()
+	configFile   = kingpin.Flag("config.file", "Exporter configuration file.").Short('c').Default("conf/check_by_nrpe_exporter.yml").String()
+	toolkitFlags = kingpinflag.AddFlags(kingpin.CommandLine, metricsPublishingPort)
 )
 
 type route struct {
@@ -80,6 +81,11 @@ func BuildHandler(config *Config) http.Handler {
 				return
 			}
 		}
+		if strings.HasPrefix(req.URL.Path, "/html/") {
+			f := http.StripPrefix("/html/", http.FileServer(http.Dir("pages")))
+			f.ServeHTTP(w, req)
+			return
+		}
 		// if len(allow) > 0 {
 		// 	w.Header().Set("Allow", strings.Join(allow, ", "))
 		// 	http.Error(w, "405 method not allowed", http.StatusMethodNotAllowed)
@@ -96,6 +102,7 @@ func main() {
 	flag.AddFlags(kingpin.CommandLine, &logConfig)
 	kingpin.Version(version.Print("check_centreon")).VersionFlag.Short('V')
 	kingpin.HelpFlag.Short('h')
+
 	kingpin.Parse()
 
 	logger := promlog.New(&logConfig)
@@ -110,10 +117,18 @@ func main() {
 
 	// http.Handle("/check", ChecksHandlerFor(config))
 	// http.Handle("/pollers/*", PollersHandlerFor(config))
-	level.Info(logger).Log("msg", "Listening on address", "address", *listenAddress)
-	if err := http.ListenAndServe(*listenAddress, BuildHandler(config)); err != nil {
-		level.Error(logger).Log("msg", "Error starting HTTP server", "errmsg", err)
+	server := &http.Server{
+		Handler: BuildHandler(config),
+	}
+	if err := web.ListenAndServe(server, toolkitFlags, logger); err != nil {
+		level.Error(logger).Log("err", err)
 		os.Exit(1)
 	}
+
+	// level.Info(logger).Log("msg", "Listening on address", "address", *listenAddress)
+	// if err := http.ListenAndServe(*listenAddress, BuildHandler(config)); err != nil {
+	// 	level.Error(logger).Log("msg", "Error starting HTTP server", "errmsg", err)
+	// 	os.Exit(1)
+	// }
 
 }

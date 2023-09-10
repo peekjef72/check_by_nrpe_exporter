@@ -7,9 +7,9 @@ pollers:
   C2:
     host: c2lsupproxy01.c2.dav.fr
   C2LegacyTEST:
-    host: dal-v-survdadc.dassault-avion.val
+    host: dal-v-survdadc.domain.do
   C2LegacyTEST2:
-    host: dal-i-tech02.dassault-avion.inf
+    host: dal-i-tech02.domain.do2
     port: 9276
 
 checks:
@@ -32,14 +32,14 @@ checks:
       -X sysfs -X tmpfs -X overlay -X debugfs -X tracefs -X autofs -X cgroup 
       --errors-only {{ .options }} -t {{ .timeout }} -w {{ .perc_threshold_warn }} -c {{ .perc_threshold_crit }} --all --local -i /.snapshot/"
     params:
-      - name: options
-        default: ""
       - name: perc_threshold_warn
-        default: 95
+        default: 5
       - name: perc_threshold_crit
-        default: 97
+        default: 3
       - name: timeout
         default: 5
+      - name: options
+        default: ""
 
   filesystemre:
     command: check_disk
@@ -47,14 +47,14 @@ checks:
     params:
       - name: ereg_path
         mandatory: true
-      - name: options
-        default: ""
       - name: perc_threshold_warn
         mandatory: true
       - name: perc_threshold_crit
         mandatory: true
       - name: timeout
         default: 5
+      - name: options
+        default: ""
 
   log:
     command: check_log

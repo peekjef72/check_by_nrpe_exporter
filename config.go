@@ -18,14 +18,14 @@ import (
 
 // PollerConfig defines a url and a set of collectors to be executed on it.
 type PollerConfig struct {
-	Scheme            string             `yaml:"scheme"`
-	Host              string             `yaml:"host"`
-	Port              string             `yaml:"port,omitempty"`
-	BaseUrl           string             `yaml:"baseUrl,omitempty"`
-	AuthConfig        AuthConfig         `yaml:"auth_mode,omitempty"`
-	ProxyUrl          string             `yaml:"proxy,omitempty"`
-	VerifySSL         ConvertibleBoolean `yaml:"verifySSL,omitempty"`
-	ConnectionTimeout model.Duration     `yaml:"connection_timeout,omitempty"` // connection timeout, per-target
+	Scheme        string             `yaml:"scheme" json:"scheme"`
+	Host          string             `yaml:"host" json:"host"`
+	Port          string             `yaml:"port,omitempty" json:"port,omitempty"`
+	BaseUrl       string             `yaml:"baseUrl,omitempty" json:"baseUrl,omitempty"`
+	AuthConfig    AuthConfig         `yaml:"auth_mode,omitempty" json:"auth_mode,omitempty"`
+	ProxyUrl      string             `yaml:"proxy,omitempty" json:"proxy,omitempty"`
+	VerifySSL     ConvertibleBoolean `yaml:"verifySSL,omitempty" json:"verifySSL,omitempty"`
+	ScrapeTimeout model.Duration     `yaml:"scrape_timeout,omitempty" json:"scrape_timeout,omitempty"` // connection timeout, per-target
 
 	client *Client
 }
@@ -34,6 +34,7 @@ type PollerConfig struct {
 func (p *PollerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain PollerConfig
 	p.VerifySSL = true
+	p.ScrapeTimeout = model.Duration(10 * time.Second)
 
 	if err := unmarshal((*plain)(p)); err != nil {
 		return err
@@ -74,6 +75,23 @@ func (bit *ConvertibleBoolean) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (bit *ConvertibleBoolean) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type plain string
+	var data string
+	if err := unmarshal((*plain)(&data)); err != nil {
+		return err
+	}
+	asString := strings.ToLower(string(data))
+	if asString == "1" || asString == "true" || asString == "yes" || asString == "on" {
+		*bit = true
+	} else if asString == "0" || asString == "false" || asString == "no" || asString == "off" {
+		*bit = false
+	} else {
+		return fmt.Errorf("boolean unmarshal error: invalid input %s", asString)
+	}
+	return nil
+}
+
 // Secret special type for storing secrets.
 type Secret string
 
@@ -91,11 +109,19 @@ func (s Secret) MarshalYAML() (interface{}, error) {
 	return nil, nil
 }
 
+// MarshalJSON implements the json.Marshaler interface for Secrets.
+func (s Secret) MarshalJSON() ([]byte, error) {
+	if s != "" {
+		return []byte("<secret>"), nil
+	}
+	return nil, nil
+}
+
 type AuthConfig struct {
-	Mode     string `yaml:"mode,omitempty"` // basic, encrypted, bearer
-	Username string `yaml:"user,omitempty"`
-	Password Secret `yaml:"password,omitempty"`
-	Token    Secret `yaml:"token,omitempty"`
+	Mode     string `yaml:"mode,omitempty" json:"mode,omitempty"` // basic, encrypted, bearer
+	Username string `yaml:"user,omitempty" json:"user,omitempty"`
+	Password Secret `yaml:"password,omitempty" json:"password,omitempty"`
+	Token    Secret `yaml:"token,omitempty" json:"token,omitempty"`
 	// authKey  string
 }
 
@@ -130,6 +156,7 @@ func (auth *AuthConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type GlobalConfig struct {
 	ScrapeTimeout    model.Duration `yaml:"scrape_timeout"` // per-scrape timeout, global
 	MaxContentLength int            `yaml:"max_content_length,omitempty"`
+	Httpd            *HttpdConfig   `yaml:"httpd,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for GlobalConfig.
@@ -139,6 +166,33 @@ func (g *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	g.MaxContentLength = 16384
 	type plain GlobalConfig
 	if err := unmarshal((*plain)(g)); err != nil {
+		return err
+	}
+	if g.Httpd == nil {
+		g.Httpd = &HttpdConfig{}
+		g.Httpd.init()
+	}
+	return nil
+}
+
+type HttpdConfig struct {
+	PagesUri  string `yaml:"pages_uri"`
+	PagesPath string `yaml:"pages_uri"`
+	APIPath   string `yaml:"api_uri"`
+}
+
+func (h *HttpdConfig) init() {
+	h.PagesUri = "/html"
+	h.PagesPath = "pages"
+	h.APIPath = "/api"
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface for GlobalConfig.
+func (h *HttpdConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	h.init()
+
+	type plain HttpdConfig
+	if err := unmarshal((*plain)(h)); err != nil {
 		return err
 	}
 

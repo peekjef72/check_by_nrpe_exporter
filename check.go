@@ -8,10 +8,10 @@ import (
 )
 
 type CommandParam struct {
-	Name      string             `yaml:"name"`
-	Mandatory ConvertibleBoolean `yaml:"mandatory,omitempty"`
-	Default   string             `yaml:"default,omitempty"`
-	Encode    string             `yaml:"encode,omitempty"`
+	Name      string             `yaml:"name" json:"name"`
+	Mandatory ConvertibleBoolean `yaml:"mandatory,omitempty" json:"mandatory,omitempty"`
+	Default   string             `yaml:"default,omitempty" json:"default,omitempty"`
+	Encode    string             `yaml:"encode,omitempty" json:"encode,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for CommandParam.
@@ -33,9 +33,9 @@ func (p *CommandParam) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // checkConfig contains parameters for a nrpe command to check
 type CheckConfig struct {
-	Command       string         `yaml:"command"`
-	CommandLine   string         `yaml:"command_line"`
-	CommandParams []CommandParam `yaml:"params"`
+	Command       string         `yaml:"command" json:"command"`
+	CommandLine   string         `yaml:"command_line" json:"command_line"`
+	CommandParams []CommandParam `yaml:"params" json:"params"`
 
 	cmd_tmpl *template.Template
 }
@@ -111,12 +111,6 @@ func (check *CheckConfig) Play(poller *PollerConfig, check_conf *CheckJSON) (map
 		return nil, fmt.Errorf("target host is empty")
 	}
 
-	// to set into resty response
-	//	timeout := 10
-	// command := check_conf.Type
-	// service := "sshd.service"
-	// service := "nrpe_exporter.service"
-	// cmd_params := fmt.Sprintf("-s %s", service)
 	cmd_params, err := check.Build(check_conf)
 	if err != nil {
 		return nil, err
@@ -134,7 +128,12 @@ func (check *CheckConfig) Play(poller *PollerConfig, check_conf *CheckJSON) (map
 	if err != nil {
 		return nil, err
 	} else if resp.StatusCode() != 200 {
-		return nil, fmt.Errorf("invalid result http code: %s", resp.Status())
+		body := resp.Body()
+		if len(body) > 0 {
+			return nil, fmt.Errorf("status: %s\nmessage: %s", resp.Status(), body)
+		} else {
+			return nil, fmt.Errorf("status: %s", resp.Status())
+		}
 	} /* else if data != nil {
 		// if cmd, ok := data[command].(map[string]any); ok {
 		// 	cmd["service"] = service

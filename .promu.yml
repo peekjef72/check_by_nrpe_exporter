@@ -20,6 +20,7 @@ tarball:
         - LICENSE
         - README.md
         - conf/
+        - pages/
 
 # crossbuild:
 #     platforms:

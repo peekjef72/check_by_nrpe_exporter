@@ -77,10 +77,10 @@
           // update pollers list
           $("#select-poller").html(options);
         }
-        $("#response").html(JSON.stringify(data));
+        // $("#response").html(JSON.stringify(data));
       },
       error: function(error) {
-        $("#response").html(JSON.stringify(error));
+        handleError(error)
       }
     });
 
@@ -115,7 +115,7 @@
         }
       },
       error: function(error) {
-        $("#response").html(JSON.stringify(error));
+        handleError(error)
       }
     });
 
@@ -136,13 +136,13 @@
       }
       sel = $("#select-check option:selected").text()
       data.type = sel
-      params = checks[sel]['CommandParams']
+      params = checks[sel]['params']
       if( params != undefined) {
         data['params'] = {} 
         for(var i=0; i<params.length; i++) {
-          val = $("#" + params[i].Name + '_id').val()
+          val = $("#" + params[i].name + '_id').val()
           if (val != "" ) {
-            data['params'][params[i].Name] = val
+            data['params'][params[i].name] = val
           }
         }
       }
@@ -157,10 +157,9 @@
         contentType: "application/json; charset=utf-8",
         success: function(data) {
           displayResult(data)
-//          $("#response").html(JSON.stringify(data));
         },
         error: function(error) {
-          $("#response").html(error);
+          handleError(error)
         }
       });
     }
@@ -174,14 +173,8 @@
       form.addEventListener('submit', function (event) {
           event.preventDefault()
           event.stopPropagation()
-
-      //    form.classList.add('was-validated')
       }, false)
     }
-
-    $('#myalert').on('closed.bs.alert', function () {
-      $("#response").html('')
-    });
 
     $("#select-check").change(function() {
       var sel, check
@@ -196,10 +189,10 @@
               check = data["check"][sel]
               var options = [];
               checks[sel] = check
-              if (!check.CommandParams instanceof Array) {
-                checks[sel]['CommandParams'] = []
+              if (check.params == undefined || !check.params instanceof Array) {
+                checks[sel]['params'] = []
               }
-              displayCheck(checks[sel]['CommandParams'])
+              displayCheck(checks[sel]['params'])
             } else {
               $("#response").html('<div id="myalert" class="alert alert-warning alert-dismissible fade show" role="alert">'
                 + '<strong>Error</strong><p>' + data.message + '</p>'
@@ -210,11 +203,11 @@
             }
           },
           error: function(error) {
-            $("#response").html(JSON.stringify(error));
+            handleError(error)
           }
         });
       } else {
-        displayCheck(checks[sel]['CommandParams'])
+        displayCheck(checks[sel]['params'])
       }
     });
 
@@ -224,27 +217,28 @@
       $('#params').html('')
       for(var i=0; i<check_params.length; i++) {
         l = document.createElement('label');
-        l.htmlFor = check_params[i].Name
+        l.htmlFor = check_params[i].name
         $(l).addClass('col-form-label col-sm-2')
-            .html(check_params[i].Name)
+            .html(check_params[i].name)
 
         tx = document.createElement('input');
         tx.type='text'
-        tx.placeHolder = check_params[i].Name
-        tx.id = check_params[i].Name + '_id'
-        if( check_params[i].Mandatory != undefined && check_params[i].Mandatory )
+        tx.placeHolder = check_params[i].name
+        tx.id = check_params[i].name + '_id'
+
+        if( check_params[i].mandatory != undefined && check_params[i].mandatory )
         {
           tx.required = true
         }
-        if (check_params[i].Default != undefined && check_params[i].Default != "<not set>" ) {
-          tx.value = check_params[i].Default
+        if (check_params[i].default != undefined && check_params[i].default != "<not set>" ) {
+          tx.value = check_params[i].default
         }
         $(tx).addClass("form-control")
         d = document.createElement('div');
         $(d).addClass("col-sm-6")
         d.appendChild(tx)
 
-        if( check_params[i].Mandatory != undefined && check_params[i].Mandatory )
+        if( check_params[i].mandatory != undefined && check_params[i].mandatory )
         {
           dm = document.createElement('div');
           $(dm).addClass("invalid-feedback")
@@ -311,12 +305,18 @@
       }
 
       // command result
-      if (results[check.Command] != undefined ) {
-        var cmd_res = results[check.Command]
+      if (results[check.command] != undefined ) {
+        var cmd_res = results[check.command]
 
         // did command execute or not
         nrpe_command_exe = '<td>NRPE command execution</td>'
-        if( cmd_res.nrpe_command_ok == 1 ) {
+        var val_nrpe_command_ok = 0
+        if( cmd_res.command_ok != undefined) {
+          val_nrpe_command_ok = cmd_res.command_ok
+        } else if( cmd_res.nrpe_command_ok != undefined) {
+          val_nrpe_command_ok = cmd_res.nrpe_command_ok
+        }
+        if( val_nrpe_command_ok == 1 ) {
           nrpe_command_exe += '<td class="table-success">OK</td>'
         } else {
           nrpe_command_exe += '<td class="table-danger">ERROR</td>'
@@ -324,6 +324,9 @@
         res += '<tr scope="row">' + nrpe_command_exe + '</tr>'
 
         nrpe_command_status = '<td>NRPE command status</td>'
+        if( cmd_res.nrpe_command_status == undefined ) {
+          cmd_res.nrpe_command_status = 'UNKNOWN'
+        }
         switch( cmd_res.nrpe_command_status ) {
           case 'OK':
             nrpe_command_status += '<td class="table-success">'
@@ -341,13 +344,17 @@
         nrpe_command_status += cmd_res.nrpe_command_status + '</td>'
         res += '<tr scope="row">' + nrpe_command_status + '</tr>'
 
-        if( cmd_res.result_msg != undefined) {
+        if( cmd_res.result_msg != undefined && cmd_res.nrpe_command_result_msg == undefined ) {
+          cmd_res.nrpe_command_result_msg = cmd_res.result_msg
+        }
+
+        if( cmd_res.nrpe_command_result_msg != undefined) {
           var pos, msg, perf
-          if( (pos = cmd_res.result_msg.indexOf("|")) != -1) {
-              msg = cmd_res.result_msg.substring(0, pos)
-              perf = cmd_res.result_msg.substring(pos+2)
+          if( (pos = cmd_res.nrpe_command_result_msg.indexOf("|")) != -1) {
+              msg = cmd_res.nrpe_command_result_msg.substring(0, pos)
+              perf = cmd_res.nrpe_command_result_msg.substring(pos+2)
           } else {
-            msg = cmd_res.result_msg
+            msg = cmd_res.nrpe_command_result_msg
           }
 
           // command execution message
@@ -360,8 +367,8 @@
             res += '<tr scope="row">' + nrpe_message + '</tr>'
           }
         }
-        if( cmd_res.nrpe_command_duration != undefined) {
-          res +=  '<tr scope="row"><td>NRPE command Duration (s)</td><td>' + cmd_res.nrpe_command_duration + '</td></tr>'
+        if( cmd_res.command_duration != undefined) {
+          res +=  '<tr scope="row"><td>NRPE command Duration (s)</td><td>' + cmd_res.command_duration + '</td></tr>'
         }
       }
       res += '</tbody>' +
@@ -369,6 +376,59 @@
       $("#response").html( res );
     }
 
+    function handleError(error) {
+      var type = error.getResponseHeader('content-type')
+      if (type == 'application/json' ) {
+        var res = error.responseJSON,
+            pos, msg, status
+
+        if( (pos = res.message.indexOf("message: ")) != -1) {
+          msg = res.message.substring(pos+9)
+          if( res.message.indexOf("status: ") != -1) {
+            status = res.message.substring(8, pos)
+          }
+        } else if( res.message.indexOf("status: ") != -1) {
+          status = res.message.substring(8)
+          msg = ''
+        } else {
+          status = 'unknown'
+          msg = res.message
+        }
+        var err_msg = '<dl class="row">' +
+            '<dt class="col-sm-3">Status:</dt>' +
+            '<dd class="col-sm-9"><p class="font-weight-normal">' + status + '</p></dd>'
+        if(msg != '') {
+          err_msg += '<dt class="col-sm-3">Message</dt>' +
+                    '<dd class="col-sm-9"><p class="font-weight-normal">' + msg + '</p></dd>'
+        }
+        err_msg += '</dl>'
+        $("#response").html('<div id="myalert" class="alert alert-warning alert-dismissible fade show" role="alert">'
+            + '<strong>Error</strong><hr><p>' + err_msg + '</p>'
+            + '<button type="button" class="close" data-dismiss="alert" aria-label="Close">'
+              + '<span id="close_myalert" aria-hidden="true">&times;</span>'
+            + '</button>'
+          + '</div>');
+
+        $('#close_myalert').click(function () {
+          $("#response").html('')
+        });
+      } else if( error.statusText ) {
+        var err_msg = error.statusText
+        if( err_msg == 'error' ) {
+          err_msg = "Server is unreachable !"
+        }
+        $("#response").html('<div id="myalert" class="alert alert-warning alert-dismissible fade show" role="alert">'
+            + '<strong>Error</strong><hr><p>' + err_msg + '</p>'
+            + '<button type="button" class="close" data-dismiss="alert" aria-label="Close">'
+              + '<span id="close_myalert" aria-hidden="true">&times;</span>'
+            + '</button>'
+          + '</div>');
+
+        $('#close_myalert').click(function () {
+          $("#response").html('')
+        });
+      }
+    }
   });
 </script>
 

@@ -45,7 +45,11 @@ type route struct {
 //	func newRoute(method, pattern string, handler http.HandlerFunc) route {
 //		return route{method, regexp.MustCompile("^" + pattern + "$"), handler}
 //	}
-func newRoute(pattern string, handler http.HandlerFunc) route {
+func newRoute(APIPath string, pattern string, handler http.HandlerFunc) route {
+	if !strings.HasSuffix(APIPath, "/") {
+		APIPath += "/"
+	}
+	pattern = APIPath + pattern
 	return route{regexp.MustCompile("^" + pattern + "$"), handler}
 }
 
@@ -58,9 +62,9 @@ type ctxValue struct {
 
 func BuildHandler(config *Config) http.Handler {
 	var routes = []route{
-		newRoute("/api/poller(?:/(.*))?", PollersHandler),
-		newRoute("/api/check(?:/(.*))?", ChecksHandler),
-		newRoute("/api/trycheck(?:/(.*))?", TriesHandler),
+		newRoute(config.Globals.Httpd.APIPath, "poller(?:/(.*))?", PollersHandler),
+		newRoute(config.Globals.Httpd.APIPath, "check(?:/(.*))?", ChecksHandler),
+		newRoute(config.Globals.Httpd.APIPath, "trycheck(?:/(.*))?", TriesHandler),
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -81,8 +85,12 @@ func BuildHandler(config *Config) http.Handler {
 				return
 			}
 		}
-		if strings.HasPrefix(req.URL.Path, "/html/") {
-			f := http.StripPrefix("/html/", http.FileServer(http.Dir("pages")))
+		if strings.HasPrefix(req.URL.Path, config.Globals.Httpd.PagesUri) {
+			path := config.Globals.Httpd.PagesUri
+			if strings.HasSuffix(req.URL.Path, "/") {
+				path += "/"
+			}
+			f := http.StripPrefix(path, http.FileServer(http.Dir(config.Globals.Httpd.PagesPath)))
 			f.ServeHTTP(w, req)
 			return
 		}

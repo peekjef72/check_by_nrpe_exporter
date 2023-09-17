@@ -2,14 +2,21 @@
 global:
   scrape_timeout: 10s
   max_content_length: 16384
+  # default values
+  # httpd:
+  #   pages_path: pages
+  #   pages_uri: /html
+  #   api_url: /api
 
 pollers:
-  C2:
-    host: c2lsupproxy01.c2.dav.fr
-  C2LegacyTEST:
-    host: dal-v-survdadc.domain.do
-  C2LegacyTEST2:
-    host: dal-i-tech02.domain.do2
+  # connect to distant nrpe_exporter trough pushproxy on port 9101
+  poller1:
+    host: poller1.myhost.domain
+    proxy: http://poller1.myhost.domain:9101
+  poller2:
+    host: poller1.myhost.domain2
+  poller3:
+    host: poller1.myhost.domain3
     port: 9276
 
 checks:

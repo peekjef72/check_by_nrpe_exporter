@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -63,7 +64,7 @@ func newClient(poller *PollerConfig, logger log.Logger) *Client {
 		level.Error(cl.logger).Log("msg", fmt.Sprintf("invalid scheme for url '%s'", poller.Scheme))
 		return nil
 	}
-	timeout := time.Duration(poller.ConnectionTimeout)
+	timeout := time.Duration(poller.ScrapeTimeout)
 	// cl.client.SetTransport(
 	// 	&http.Transport{
 	// 		DialContext: (&net.Dialer{
@@ -86,7 +87,7 @@ func newClient(poller *PollerConfig, logger log.Logger) *Client {
 		cl.client.SetProxy(poller.ProxyUrl)
 	}
 
-	cl.client.SetHeader("Content-Type", "application/json").SetHeader("Accept", "*/*")
+	cl.client.SetHeader("Content-Type", "application/json").SetHeader("Accept", "*/*").SetHeader("X-Prometheus-Scrape-Timeout-Seconds", fmt.Sprintf("%f", math.Floor(timeout.Seconds())))
 	// cl.client.OnError(onErrorHook)
 
 	return cl
@@ -267,12 +268,9 @@ func (c *Client) Execute(
 	// defer c.mutex.Unlock()
 
 	c.SetUrl(uri)
-	level.Info(c.logger).Log("action", method, "url", c.url)
+	level.Debug(c.logger).Log("action", method, "url", c.url)
 	if body != nil {
 		level.Debug(c.logger).Log("action", method, "url", c.url, "body", fmt.Sprintf("%+v", body))
-	}
-	if len(params) > 0 {
-		level.Debug(c.logger).Log("action", method, "url", c.url, "params", params)
 	}
 	var resp *resty.Response
 
@@ -284,6 +282,9 @@ func (c *Client) Execute(
 		req.SetQueryParams(params)
 	}
 	resp, err = req.Execute(method, c.url)
+	if len(params) > 0 && req.RawRequest != nil && req.RawRequest.URL != nil {
+		level.Debug(c.logger).Log("action", method, "params", req.RawRequest.URL.RawQuery)
+	}
 	if err == nil {
 		if resp.StatusCode() == 200 {
 			data = c.getNRPEResponse(resp)

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"strconv"
@@ -381,13 +382,13 @@ func HandleError(status int, err error, config *Config, w http.ResponseWriter, r
 	if status == 0 {
 		status = http.StatusInternalServerError
 	}
-	w.WriteHeader(status)
 	w.Header().Set(contentTypeHeader, string(applicationJSON))
 	w.Header().Set(allowOriginHeader, "*")
+	w.WriteHeader(status)
 
 	errMsg := make(map[string]any)
 	errMsg["status"] = 0
-	errMsg["message"] = fmt.Sprintf("%s", err)
+	errMsg["message"] = html.EscapeString(fmt.Sprintf("%s", err))
 	err_msg, err := json.Marshal(errMsg)
 	if err != nil && config != nil {
 		level.Error(config.logger).Log("msg", fmt.Sprintf("Failed to generate error msg: %s", err))

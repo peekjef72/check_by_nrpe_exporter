@@ -6,7 +6,7 @@
 - translate openmetrics response from poller into a JSON format.
 
 # pre-requirements
-* nrpe_exporter v 0.3.0:
+* nrpe_exporter v 0.3.0: [see project on GitHub](https://github.com/peekjef72/nrpe_exporter/tree/profile_with_nrped_jfpik)
     * build with result_message enabled
     * transport ssl (openssl 1.1 or 3.1 enabled)
     
@@ -14,9 +14,10 @@
 
 # configuration
 config is defined in conf/check_by_nrpe_exporter.yml
+
 it defines:
  * known pollers list
- * allowed commands
+ * allowed commands and how to display them in the page.
 
  ## pollers list
 

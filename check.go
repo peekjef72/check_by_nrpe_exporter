@@ -9,9 +9,12 @@ import (
 
 type CommandParam struct {
 	Name      string             `yaml:"name" json:"name"`
+	Display   string             `yaml:"display,omitempty" json:"display,omitempty"`
+	Help      string             `yaml:"help,omitempty" json:"help,omitempty"`
 	Mandatory ConvertibleBoolean `yaml:"mandatory,omitempty" json:"mandatory,omitempty"`
 	Default   string             `yaml:"default,omitempty" json:"default,omitempty"`
 	Encode    string             `yaml:"encode,omitempty" json:"encode,omitempty"`
+	Type      string             `yaml:"type,omitempty" json:"type,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for CommandParam.

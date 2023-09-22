@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/promlog/flag"
@@ -26,6 +27,7 @@ import (
 const (
 	// Constant values
 	metricsPublishingPort = ":8082"
+	exeName               = "check_by_nrpe_exporter"
 )
 
 var (
@@ -60,7 +62,7 @@ type ctxValue struct {
 	path   string
 }
 
-func BuildHandler(config *Config) http.Handler {
+func BuildHandler(config *Config, logger log.Logger) http.Handler {
 	var routes = []route{
 		newRoute(config.Globals.Httpd.APIPath, "poller(?:/(.*))?", PollersHandler),
 		newRoute(config.Globals.Httpd.APIPath, "check(?:/(.*))?", ChecksHandler),
@@ -68,6 +70,7 @@ func BuildHandler(config *Config) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		level.Debug(logger).Log("msg", fmt.Sprintf("%s %s from %s", req.Method, req.URL.Path, req.RemoteAddr))
 		// var allow []string
 		for _, route := range routes {
 			matches := route.regex.FindStringSubmatch(req.URL.Path)
@@ -82,6 +85,7 @@ func BuildHandler(config *Config) http.Handler {
 				}
 				ctx := context.WithValue(req.Context(), ctxKey{}, ctxval)
 				route.handler(w, req.WithContext(ctx))
+				level.Debug(logger).Log("msg", fmt.Sprintf("%s", w.Header().Get("Status")))
 				return
 			}
 		}
@@ -108,7 +112,7 @@ func BuildHandler(config *Config) http.Handler {
 func main() {
 	logConfig := promlog.Config{}
 	flag.AddFlags(kingpin.CommandLine, &logConfig)
-	kingpin.Version(version.Print("check_centreon")).VersionFlag.Short('V')
+	kingpin.Version(version.Print(exeName)).VersionFlag.Short('V')
 	kingpin.HelpFlag.Short('h')
 
 	kingpin.Parse()
@@ -121,22 +125,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	level.Info(logger).Log("msg", "start test")
+	level.Info(logger).Log("msg", fmt.Sprintf("starting %s ...", exeName))
 
-	// http.Handle("/check", ChecksHandlerFor(config))
-	// http.Handle("/pollers/*", PollersHandlerFor(config))
 	server := &http.Server{
-		Handler: BuildHandler(config),
+		Handler: BuildHandler(config, logger),
 	}
 	if err := web.ListenAndServe(server, toolkitFlags, logger); err != nil {
 		level.Error(logger).Log("err", err)
 		os.Exit(1)
 	}
-
-	// level.Info(logger).Log("msg", "Listening on address", "address", *listenAddress)
-	// if err := http.ListenAndServe(*listenAddress, BuildHandler(config)); err != nil {
-	// 	level.Error(logger).Log("msg", "Error starting HTTP server", "errmsg", err)
-	// 	os.Exit(1)
-	// }
-
 }

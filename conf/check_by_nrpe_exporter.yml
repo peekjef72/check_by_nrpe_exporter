@@ -25,6 +25,8 @@ checks:
     command_line: "-s {{ .custom_check }} -m {{ .parameters }} -b"
     params:
       - name: custom_check
+        display: check script
+        help: "custom script to play"
         mandatory: true
       - name: parameters
         default: ""
@@ -40,11 +42,22 @@ checks:
       --errors-only {{ .options }} -t {{ .timeout }} -w {{ .perc_threshold_warn }} -c {{ .perc_threshold_crit }} --all --local -i /.snapshot/"
     params:
       - name: perc_threshold_warn
+        display: warn threshold
+        help: warning free space thresdhold; if free bytes are less or egal to threshold, WARNING state is raised
         default: 5
+        mandatory: true
+        type: number
       - name: perc_threshold_crit
+        display: critical threshold
+        help: critical free space threshold; if free bytes are less or egal to threshold, CRITICAL state is raised
         default: 3
+        mandatory: true
+        type: number
       - name: timeout
         default: 5
+        type: number
+        mandatory: true
+        help: timeout in second for the remote command to execute
       - name: options
         default: ""
 
@@ -55,11 +68,21 @@ checks:
       - name: ereg_path
         mandatory: true
       - name: perc_threshold_warn
+        display: warn threshold
+        help: warning free space thresdhold; if free bytes are less or egal to threshold, WARNING state is raised
         mandatory: true
+        type: number
       - name: perc_threshold_crit
+        display: critical threshold
+        help: critical free space threshold; if free bytes are less or egal to threshold, CRITICAL state is raised
         mandatory: true
+        type: number
       - name: timeout
         default: 5
+        type: number
+        type: number
+        mandatory: true
+        help: timeout in second for the remote command to execute
       - name: options
         default: ""
 
@@ -70,6 +93,7 @@ checks:
       - name: logfilepath
         mandatory: true
       - name: ko_pattern
+        help: "regexp pattern to match against each read line"
         mandatory: true
         encode: base64
 
@@ -79,12 +103,19 @@ checks:
     params:
       - name: process
         mandatory: true
+        help: regexp pattern that will be compared to the whole command line (command + args)
       - name: min_count
+        display: min count
+        help: minimum number of process; if count is less than this number, the check is in CRITICAL state
         mandatory: false
         default: 1
+        type: number
       - name: max_count
         mandatory: false
         default: ""
+        type: number
+        display: max count
+        help: maximum number of process; if count is greater or egal than this number, the check is in CRITICAL state
 
   service:
     command: check_service
@@ -100,8 +131,11 @@ checks:
       - name: hostname
         mandatory: true
       - name: port
+        mandatory: true
         default: 80
+        type: number
       - name: url
+        mandatory: true
         default: /
       - name: options
         mandatory: false

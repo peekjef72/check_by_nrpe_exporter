@@ -8,10 +8,10 @@
 <body>
 
 <div class="container">
-  <h1>Check Centreon</h1>
+  <h1>Check by NRPE EXPORTER</h1>
     <form class="needs-validation" id="send_check">
     <div class="form-group row col-md-6">
-      <label for="select-poller" class="col-sm-2 col-form-label">Poller</label>
+      <label for="select-poller" class="col-sm-2 col-form-label" >Poller</label>
       <div class="col-sm-10">
         <select id="select-poller" class="form-control">
           <option value="">select poller</option>
@@ -47,6 +47,7 @@
 </div>
 
 <script src="/html/javascript/jquery.min.js"></script>
+<script src="/html/javascript/bootstrap.bundle.min.js"></script>
 <script>
 
   var pollers = [],
@@ -56,7 +57,6 @@
       api_url = '/api'
 
   $(document).ready(function() {
-
     // init pollers list
     $.ajax({
       type: "GET",
@@ -218,11 +218,30 @@
       for(var i=0; i<check_params.length; i++) {
         l = document.createElement('label');
         l.htmlFor = check_params[i].name
+        var param_display = check_params[i].name
+        if( check_params[i].display != undefined ) {
+          param_display = check_params[i].display
+        }
         $(l).addClass('col-form-label col-sm-2')
-            .html(check_params[i].name)
+            .html(param_display)
 
         tx = document.createElement('input');
-        tx.type='text'
+        var type = 'text'
+        if( check_params[i].type != undefined ) {
+          switch(check_params[i].type) {
+            case 'text': 
+            case 'number': 
+            case 'tel':
+            case 'url':
+            case 'email':
+            case 'password':
+              type = check_params[i].type
+              break
+            default:
+              break
+          }
+        }
+        tx.type = type
         tx.placeHolder = check_params[i].name
         tx.id = check_params[i].name + '_id'
 
@@ -240,20 +259,25 @@
 
         if( check_params[i].mandatory != undefined && check_params[i].mandatory )
         {
-          dm = document.createElement('div');
+          dm = document.createElement('div')
           $(dm).addClass("invalid-feedback")
                 .text('Please provide a value')
           d.appendChild(dm)
         }
 
-        dr = document.createElement('div');
+        dr = document.createElement('div')
+        if(check_params[i].help != undefined ) {
+          dr.title = check_params[i].help
+          dr.setAttribute('data-toggle','tooltip')
+        }  
         $(dr).addClass("form-group row g-2 col-md-10")
         dr.appendChild(l)
         dr.appendChild(d)
 
         $('#params').append(dr)
-
       }
+      // enable tooltips
+      $('[data-toggle="tooltip"]').tooltip();
     }
 
     function displayResult(results) {
@@ -429,6 +453,7 @@
         });
       }
     }
+
   });
 </script>
 

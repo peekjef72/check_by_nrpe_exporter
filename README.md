@@ -218,7 +218,7 @@ POST /api/trycheck
 
 ## Web interface
 
-there is only one page served by url /html/inde.html.
+there is only one page served by url /html/index.html.
 
 It is a bootstrap, jquery html, css, javscript page that allow user to check commands (check) over a poller.
 

@@ -4,11 +4,12 @@
   <meta charset="UTF-8">
   <title>Check NRPE command by nrpe_exporter</title>
   <link rel="stylesheet" href="/html/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/html/css/local.css">
 </head>
 <body>
 
 <div class="container">
-  <h1>Check by NRPE EXPORTER</h1>
+  <h1>Check by NRPE_EXPORTER</h1>
     <form class="needs-validation" id="send_check">
     <div class="form-group row col-md-6">
       <label for="select-poller" class="col-sm-2 col-form-label" >Poller</label>
@@ -39,7 +40,9 @@
     </div>
     <div class="form-group row" >
       <button class="btn btn-primary" type="submit" id="submit-button">Perform Check</button>
-    </div>
+      <div class="spinner-border" role="status" id="loading" style="display: none;">
+        <span class="sr-only">Loading...</span>
+      </div>    </div>
     </form>
 
   <div id="response"></div>
@@ -112,6 +115,7 @@
             + '<span aria-hidden="true">&times;</span>'
             + ' </button>'
             + '</div>');
+          displayProgress(false)
         }
       },
       error: function(error) {
@@ -125,7 +129,7 @@
       if( !form.checkValidity() ) {
         return false
       }
-
+      displayProgress(true)
       var data = {}, sel, params, val
       data.poller = $("#select-poller option:selected").text()
       data.target = $("#target").val()
@@ -162,6 +166,17 @@
           handleError(error)
         }
       });
+    }
+    function displayProgress(state) {
+      if (state) {
+        $("#submit-button").hide()
+        $('body').addClass('waiting')
+        $("#loading").show()
+      } else {
+        $("#submit-button").show()
+        $('body').removeClass('waiting')
+        $("#loading").hide()
+      }
     }
 
     $("#submit-button").click(function() {
@@ -200,6 +215,7 @@
                 + '<span aria-hidden="true">&times;</span>'
                 + ' </button>'
                 + '</div>');
+              displayProgress(false)
             }
           },
           error: function(error) {
@@ -213,6 +229,8 @@
 
     function displayCheck(check_params) {
       var l, tx, d, dm, dr
+      // close opened tooltips
+      $('[data-toggle="tooltip"]').tooltip("hide");
 
       $('#params').html('')
       for(var i=0; i<check_params.length; i++) {
@@ -301,16 +319,45 @@
       }
 
       var mon = now.getMonth(),
-          day = now.getDate()
-      if (mon < 10) {
-        mon = '0' + mon
-      }
-      if (day < 10) {
-        day = '0' + day
+          day = now.getDate(),
+          he = now.getHours(),
+          mi = now.getMinutes(),
+          se = now.getSeconds(),
+          ms = now.getMilliseconds(),
+          mtz = now.getTimezoneOffset()
+      var pad0 = function(num) {
+        if( num == undefined ) num = 0
+        if( num < 10) {
+          num = '0' + num
+        }
+        return num
+      },
+      pad00 = function(num) {
+        if( num == undefined ) num = 0
+        if( num < 10) {
+          num = '00' + num
+        }
+        else if( num < 100) {
+          num = '0' + num
+        }
+        return num
+      },
+      tzs = function(min) {
+        var sign='+', tmi, the
+        if (min > 0) {
+          sign='-'
+        } else {
+          min *= -1 
+        }
+        the = pad0(Math.floor(min/60))
+        tmi = pad0(min % 60)
+
+        return sign + the +':' + tmi
       }
 
-      now_date = now.getFullYear() + '-' + mon + '-' + day
-        + ' ' + now.toTimeString()
+      now_date = now.getFullYear() + '-' + pad0(mon+1) + '-' + pad0(day)
+        + 'T' + pad0(he) + ':' + pad0(mi) + ':' + pad0(se) + '.' + pad00(ms)
+        + tzs(now.getTimezoneOffset())
       res = '<table class="table table-striped table-hover">' +
               '<tbody>' +
                 '<tr scope="row"><td>Target</td><td>' + $("#target").val() + '</td></tr>' +
@@ -376,7 +423,7 @@
           var pos, msg, perf
           if( (pos = cmd_res.nrpe_command_result_msg.indexOf("|")) != -1) {
               msg = cmd_res.nrpe_command_result_msg.substring(0, pos)
-              perf = cmd_res.nrpe_command_result_msg.substring(pos+2)
+              perf = cmd_res.nrpe_command_result_msg.substring(pos+1).trim()
           } else {
             msg = cmd_res.nrpe_command_result_msg
           }
@@ -398,6 +445,7 @@
       res += '</tbody>' +
             '</table>'
       $("#response").html( res );
+      displayProgress(false)
     }
 
     function handleError(error) {
@@ -452,6 +500,7 @@
           $("#response").html('')
         });
       }
+      displayProgress(false)
     }
 
   });

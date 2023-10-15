@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -31,6 +32,7 @@ const (
 )
 
 var (
+	start_time string
 
 	// debug_flag = kingpin.Flag("debug", "debug connection checks.").Short('d').Default("false").Bool()
 	// listenAddress = kingpin.Flag("web.listen-address", "The address to listen on for HTTP requests.").Default(metricsPublishingPort).String()
@@ -48,10 +50,12 @@ type route struct {
 //		return route{method, regexp.MustCompile("^" + pattern + "$"), handler}
 //	}
 func newRoute(APIPath string, pattern string, handler http.HandlerFunc) route {
-	if !strings.HasSuffix(APIPath, "/") {
-		APIPath += "/"
+	if APIPath != "" {
+		if !strings.HasSuffix(APIPath, "/") {
+			APIPath += "/"
+		}
+		pattern = APIPath + pattern
 	}
-	pattern = APIPath + pattern
 	return route{regexp.MustCompile("^" + pattern + "$"), handler}
 }
 
@@ -67,6 +71,7 @@ func BuildHandler(config *Config, logger log.Logger) http.Handler {
 		newRoute(config.Globals.Httpd.APIPath, "poller(?:/(.*))?", PollersHandler),
 		newRoute(config.Globals.Httpd.APIPath, "check(?:/(.*))?", ChecksHandler),
 		newRoute(config.Globals.Httpd.APIPath, "trycheck(?:/(.*))?", TriesHandler),
+		newRoute("/html/", "status", StatusHandler),
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -79,13 +84,17 @@ func BuildHandler(config *Config, logger log.Logger) http.Handler {
 				// 	allow = append(allow, route.method)
 				// 	continue
 				// }
+				var path string
+				if len(matches) > 1 {
+					path = matches[1]
+				}
 				ctxval := &ctxValue{
 					config: config,
-					path:   matches[1],
+					path:   path,
 				}
 				ctx := context.WithValue(req.Context(), ctxKey{}, ctxval)
 				route.handler(w, req.WithContext(ctx))
-				level.Debug(logger).Log("msg", fmt.Sprintf("%s", w.Header().Get("Status")))
+				// level.Debug(logger).Log("msg", fmt.Sprintf("%s", w.Header().Get("Status")))
 				return
 			}
 		}
@@ -125,6 +134,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	start_time = time.Now().Format("2006-01-02T15:04:05.000Z07:00")
 	level.Info(logger).Log("msg", fmt.Sprintf("starting %s ...", exeName))
 
 	server := &http.Server{

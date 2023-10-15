@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"html/template"
 	"io"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/version"
 	"golang.org/x/exp/maps"
 )
 
@@ -20,6 +23,67 @@ const (
 	acceptEncodingHeader  = "Accept-Encoding"
 	allowOriginHeader     = "Access-Control-Allow-Origin"
 	applicationJSON       = "application/json"
+	templates             = `
+      <html>
+      <head>
+        <title>{{ .ExeName }}</title>
+        <style type="text/css">
+          body { margin: 0; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.42857143; color: #333; background-color: #fff; }
+          .navbar { display: flex; background-color: #222; margin: 0; border-width: 0 0 1px; border-style: solid; border-color: #080808; }
+          .navbar > * { margin: 0; padding: 15px; }
+          .navbar * { line-height: 20px; color: #9d9d9d; }
+          .navbar a { text-decoration: none; }
+          .navbar a:hover, .navbar a:focus { color: #fff; }
+          .navbar-header { font-size: 18px; }
+          body > * { margin: 15px; padding: 0; }
+          pre { padding: 10px; font-size: 13px; background-color: #f5f5f5; border: 1px solid #ccc; }
+          h1, h2 { font-weight: 500; }
+          a { color: #337ab7; }
+          a:hover, a:focus { color: #23527c; }
+		  table { border: 1px solid #edd2e6; border-collapse: collapse; margin-bottom: 1rem; width: 80%; }
+		  tr { border: 1px solid #edd2e6; padding: 0.3rem; text-align: left; width: 35%; }
+		  th { border: 1px solid #edd2e6; padding: 0.3rem; }
+		  td { border: 1px solid #edd2e6; padding: 0.3rem; }
+		  .odd { background-color: rgba(0,0,0,.05); }
+        </style>
+      </head>
+      <body>
+	  <h2>Build Information</h2>
+	  <table>
+			<tbody>
+			  <tr class="odd" >
+				  <th>Version</th>
+				  <td>{{ .Version }}</td>
+			  </tr>
+			  <tr>
+				  <th>Revision</th>
+				  <td>{{ .Revision }}</td>
+			  </tr>
+			  <tr class="odd" >
+				  <th>Branch</th>
+				  <td>{{ .Branch }}</td>
+			  </tr>
+			  <tr>
+				  <th>BuildUser</th>
+				  <td>{{ .BuildUser }}</td>
+			  </tr>
+			  <tr class="odd" >
+				  <th>BuildDate</th>
+				  <td>{{ .BuildDate }}</td>
+			  </tr>
+			  <tr>
+				  <th>GoVersion</th>
+				  <td>{{ .GoVersion }}</td>
+			  </tr>
+			  <tr class="odd" >
+			      <th>Server start</th>
+                  <td>{{ .StartTime }}</td>
+              </tr>
+		</tbody>
+	  </table>
+	  </body>
+      </html>
+    `
 )
 
 type CheckJSON struct {
@@ -395,4 +459,52 @@ func HandleError(status int, err error, config *Config, w http.ResponseWriter, r
 		return
 	}
 	w.Write(err_msg)
+}
+
+var (
+	statusTemplate = template.Must(template.New("").Parse(templates))
+)
+
+type versionInfo struct {
+	ExeName   string
+	Version   string
+	Revision  string
+	Branch    string
+	BuildUser string
+	BuildDate string
+	GoVersion string
+	StartTime string
+}
+
+// ConfigHandlerFunc is the HTTP handler for the `/config` page. It outputs the configuration marshaled in YAML format.
+func StatusHandler(w http.ResponseWriter, req *http.Request) {
+	vinfos := versionInfo{
+		ExeName:   exeName,
+		Version:   version.Version,
+		Revision:  version.Revision,
+		Branch:    version.Branch,
+		BuildUser: version.BuildUser,
+		BuildDate: version.BuildDate,
+		GoVersion: runtime.Version(),
+		StartTime: start_time,
+	}
+
+	if err := statusTemplate.Execute(w, vinfos); err != nil {
+		ctxval, ok := req.Context().Value(ctxKey{}).(*ctxValue)
+		if !ok {
+			err := fmt.Errorf("invalid context received")
+			HandleError(http.StatusInternalServerError, err, nil, w, req)
+			return
+
+		}
+		config := ctxval.config
+		if req.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			err := fmt.Errorf("invalid method: only GET allowed")
+			HandleError(http.StatusMethodNotAllowed, err, config, w, req)
+			return
+		}
+		HandleError(http.StatusBadRequest, err, config, w, req)
+		return
+	}
 }

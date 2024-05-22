@@ -429,6 +429,7 @@
           }
 
           // command execution message
+          msg = msg.replaceAll('\\n', '<br>')
           nrpe_message =  '<td>NRPE command Message</td><td>' + msg + '</td>'
           res += '<tr scope="row">' + nrpe_message + '</tr>'
           // command execution result performance

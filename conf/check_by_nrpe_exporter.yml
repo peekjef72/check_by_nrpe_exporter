@@ -124,6 +124,10 @@ checks:
       - name: service
         mandatory: true
 
+  service-list:
+    command: check_service
+    command_line: "-l"
+
   url:
     command: check_http
     command_line: "-H {{ .hostname }} -p {{ .port }} -u {{ .url }} {{ .options }} --ereg=\"{{ .reg_match }}\""
